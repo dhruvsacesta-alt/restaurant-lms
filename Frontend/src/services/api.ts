@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://restaurant-lms.onrender.com/api";
+const API_BASE_URL = 'http://localhost:5000/api';
 
 // Helper function to get auth token
 const getAuthToken = () => {
@@ -95,12 +95,12 @@ export const coursesAPI = {
 
 // Chapters API
 export const chaptersAPI = {
-  getByCourseId: (courseId: string) => apiRequest(`/courses/${courseId}/chapters`),
+  getByCourseId: (courseId: string) => apiRequest(`/chapters/courses/${courseId}`),
 
   getById: (id: string) => apiRequest(`/chapters/${id}`),
 
   create: (courseId: string, chapter: { name: string; description: string }) =>
-    apiRequest(`/courses/${courseId}/chapters`, {
+    apiRequest(`/chapters/courses/${courseId}`, {
       method: 'POST',
       body: JSON.stringify(chapter),
     }),
