@@ -112,7 +112,13 @@ export function ChapterCard({ chapter, index, onEdit, onDelete, onAddVideo, onDe
                   {/* Video Thumbnail */}
                   <div className="w-24 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded flex items-center justify-center flex-shrink-0">
                     {video.thumbnail ? (
-                      <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover rounded" />
+                      <video
+                        poster={video.thumbnail}
+                        src={video.videoUrl}
+                        className="w-full h-full object-cover rounded"
+                        controls
+                        preload="metadata"
+                      />
                     ) : (
                       <PlayCircle className="w-8 h-8 text-orange-400" />
                     )}
