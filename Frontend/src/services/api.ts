@@ -119,7 +119,7 @@ export const chaptersAPI = {
 
 // Videos API
 export const videosAPI = {
-  getByChapterId: (chapterId: string) => apiRequest(`/chapters/${chapterId}/videos`),
+  getByChapterId: (chapterId: string) => apiRequest(`/videos/chapters/${chapterId}`),
 
   getById: (id: string) => apiRequest(`/videos/${id}`),
 
@@ -130,7 +130,7 @@ export const videosAPI = {
     thumbnail?: string;
     duration?: string;
   }) =>
-    apiRequest(`/chapters/${chapterId}/videos`, {
+    apiRequest(`/videos/chapters/${chapterId}`, {
       method: 'POST',
       body: JSON.stringify(video),
     }),
