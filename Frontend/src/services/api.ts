@@ -154,38 +154,88 @@ export const videosAPI = {
 };
 
 // File Upload API
+export const uploadImage = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE_URL}/upload/image`, {
+    method: 'POST',
+    headers: {
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+    throw new Error(error.message || 'Image upload failed');
+  }
+
+  return response.json();
+};
+
+export const uploadVideo = async (file: File, onProgress?: (progress: number) => void): Promise<any> => {
+  const formData = new FormData();
+  formData.append('video', file);
+
+  const token = getAuthToken();
+
+  // Use XMLHttpRequest for progress tracking
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+
+    // Progress event
+    if (onProgress) {
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const percentComplete = (e.loaded / e.total) * 100;
+          onProgress(Math.round(percentComplete));
+        }
+      });
+    }
+
+    // Load event (success)
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (error) {
+          reject(new Error('Failed to parse upload response'));
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          reject(new Error(error.message || 'Upload failed'));
+        } catch {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    });
+
+    // Error event
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'));
+    });
+
+    // Abort event
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload cancelled'));
+    });
+
+    // Set up the request
+    xhr.open('POST', `${API_BASE_URL}/upload/video`, true);
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    // Send the request
+    xhr.send(formData);
+  });
+};
+
 export const uploadAPI = {
-  uploadImage: (file: File) => {
-    const formData = new FormData();
-    formData.append('image', file);
-
-    const token = getAuthToken();
-    return fetch(`${API_BASE_URL}/upload/image`, {
-      method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    }).then(res => {
-      if (!res.ok) throw new Error('Upload failed');
-      return res.json();
-    });
-  },
-
-  uploadVideo: (file: File) => {
-    const formData = new FormData();
-    formData.append('video', file);
-
-    const token = getAuthToken();
-    return fetch(`${API_BASE_URL}/upload/video`, {
-      method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    }).then(res => {
-      if (!res.ok) throw new Error('Upload failed');
-      return res.json();
-    });
-  },
+  uploadImage,
+  uploadVideo,
 };

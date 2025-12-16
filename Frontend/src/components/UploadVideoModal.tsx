@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Upload, Video as VideoIcon, Image as ImageIcon } from 'lucide-react';
 import type { Video, Chapter } from '../App';
+import { uploadVideo, uploadImage } from '../services/api';
 
 interface UploadVideoModalProps {
   isOpen: boolean;
@@ -57,6 +58,42 @@ export function UploadVideoModal({ isOpen, onClose, onSave, courseId, chapterId,
     }, 200);
   };
 
+  const handleThumbnailChange = async (file: File) => {
+    try {
+      setIsUploading(true);
+      const result = await uploadImage(file);
+      if (result.success) {
+        setThumbnail(result.data.url);
+      }
+    } catch (error) {
+      console.error('Thumbnail upload failed:', error);
+      alert('Failed to upload thumbnail');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleVideoChange = async (file: File) => {
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+      const result = await uploadVideo(file, (progress) => {
+        setUploadProgress(progress);
+      });
+      if (result.success) {
+        setVideoUrl(result.data.url);
+      } else {
+        alert('Failed to upload video');
+      }
+    } catch (error) {
+      console.error('Video upload failed:', error);
+      alert('Failed to upload video: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -75,15 +112,19 @@ export function UploadVideoModal({ isOpen, onClose, onSave, courseId, chapterId,
   const handleThumbnailDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingThumb(false);
-    setThumbnail('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleThumbnailChange(files[0]);
+    }
   };
 
   const handleVideoDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDraggingVideo(false);
-    simulateUpload(() => {
-      setVideoUrl('https://example.com/uploaded-video.mp4');
-    });
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleVideoChange(files[0]);
+    }
   };
 
   return (
@@ -204,7 +245,16 @@ export function UploadVideoModal({ isOpen, onClose, onSave, courseId, chapterId,
                         <p className="text-neutral-600">Drag & drop thumbnail or click to browse</p>
                         <button
                           type="button"
-                          onClick={() => setThumbnail('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80')}
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) handleThumbnailChange(file);
+                            };
+                            input.click();
+                          }}
                           className="px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
                         >
                           Browse
@@ -268,7 +318,16 @@ export function UploadVideoModal({ isOpen, onClose, onSave, courseId, chapterId,
                         <p className="text-neutral-500">MP4, MOV, AVI up to 500MB</p>
                         <button
                           type="button"
-                          onClick={() => simulateUpload(() => setVideoUrl('https://example.com/video.mp4'))}
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'video/*';
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) handleVideoChange(file);
+                            };
+                            input.click();
+                          }}
                           className="px-4 py-2 border border-neutral-300 rounded-lg hover:bg-neutral-50 transition-colors"
                         >
                           Browse Files
