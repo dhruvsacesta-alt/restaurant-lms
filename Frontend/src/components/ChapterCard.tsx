@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Edit, Trash2, Plus, Video, ChevronDown, ChevronUp, Clock, PlayCircle } from 'lucide-react';
 import type { Chapter } from '../App';
+import { VideoPlayerModal } from './VideoPlayerModal';
+
+
 
 interface ChapterCardProps {
   chapter: Chapter;
@@ -14,6 +17,7 @@ interface ChapterCardProps {
 
 export function ChapterCard({ chapter, index, onEdit, onDelete, onAddVideo, onDeleteVideo }: ChapterCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [openVideo, setOpenVideo] = useState<OpenVideo | null>(null);
 
   return (
     <motion.div
@@ -110,15 +114,11 @@ export function ChapterCard({ chapter, index, onEdit, onDelete, onAddVideo, onDe
                   className="bg-white border border-neutral-200 rounded-lg p-4 flex items-start gap-4 hover:shadow-md transition-shadow"
                 >
                   {/* Video Thumbnail */}
-                  <div className="w-24 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded flex items-center justify-center flex-shrink-0">
+                  <div className="w-24 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded flex items-center justify-center flex-shrink-0 cursor-pointer overflow-hidden"
+                       onClick={() => setOpenVideo({ url: video.videoUrl, title: video.title, poster: video.thumbnail })}
+                  >
                     {video.thumbnail ? (
-                      <video
-                        poster={video.thumbnail}
-                        src={video.videoUrl}
-                        className="w-full h-full object-cover rounded"
-                        controls
-                        preload="metadata"
-                      />
+                      <img src={video.thumbnail} alt={video.title} className="w-full h-full object-cover rounded" />
                     ) : (
                       <PlayCircle className="w-8 h-8 text-orange-400" />
                     )}
@@ -146,6 +146,15 @@ export function ChapterCard({ chapter, index, onEdit, onDelete, onAddVideo, onDe
           </motion.div>
         )}
       </AnimatePresence>
+      <VideoPlayerModal
+        isOpen={!!openVideo}
+        onClose={() => setOpenVideo(null)}
+        videoUrl={openVideo?.url || ''}
+        title={openVideo?.title}
+        poster={openVideo?.poster}
+      />
     </motion.div>
   );
 }
+
+interface OpenVideo { url: string; title?: string; poster?: string };

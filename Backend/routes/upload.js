@@ -4,16 +4,22 @@ const path = require('path');
 const fs = require('fs');
 const { protect } = require('../middleware/auth');
 
+const axios = require('axios');
 const router = express.Router();
 
-// Create uploads directory if it doesn't exist
+// Determine whether to use Bunny storage (if configured)
+const useBunny = !!(process.env.BUNNY_STORAGE_ZONE && process.env.BUNNY_API_KEY);
+
+// Create uploads directory only if not using Bunny (local fallback)
 const uploadDir = process.env.UPLOAD_PATH || './uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+if (!useBunny) {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
 }
 
-// Configure multer storage
-const storage = multer.diskStorage({
+// Configure multer storage: use memoryStorage when Bunny is configured to avoid local writes
+const storage = useBunny ? multer.memoryStorage() : multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
   },
@@ -43,6 +49,43 @@ const upload = multer({
   }
 });
 
+// Helper to upload file to Bunny Storage if configured
+// opts: { buffer?, localPath?, filename, mimetype }
+const uploadToBunny = async (opts) => {
+  const storageZone = process.env.BUNNY_STORAGE_ZONE;
+  const apiKey = process.env.BUNNY_API_KEY;
+  const pullZone = process.env.BUNNY_PULL_ZONE; // optional
+
+  if (!storageZone || !apiKey) return null;
+
+  const storageUrl = `https://storage.bunnycdn.com/${storageZone}/${opts.filename}`;
+
+  try {
+    const data = opts.buffer ? opts.buffer : fs.createReadStream(opts.localPath);
+    await axios.put(storageUrl, data, {
+      headers: {
+        AccessKey: apiKey,
+        'Content-Type': opts.mimetype
+      },
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity
+    });
+
+    // Build final URL: prefer pull zone if provided, otherwise use storage URL
+    const finalUrl = pullZone ? `https://${pullZone}/${opts.filename}` : storageUrl;
+
+    // Remove local file after successful upload (if there is one)
+    if (opts.localPath && fs.existsSync(opts.localPath)) {
+      try { fs.unlinkSync(opts.localPath); } catch (e) { /* ignore */ }
+    }
+
+    return finalUrl;
+  } catch (err) {
+    console.error('Error uploading to Bunny:', err?.message || err);
+    return null;
+  }
+};
+
 // @route   POST /api/upload/image
 // @desc    Upload image file
 // @access  Private
@@ -55,20 +98,27 @@ router.post('/image', protect, upload.single('image'), (req, res) => {
       });
     }
 
-    // In a real application, you would upload to cloud storage (AWS S3, Cloudinary, etc.)
-    // For now, return the local file path
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Try uploading to Bunny if configured, otherwise return local file URL
+    (async () => {
+      let finalUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
 
-    res.json({
-      success: true,
-      message: 'Image uploaded successfully',
-      data: {
-        filename: req.file.filename,
-        url: fileUrl,
-        size: req.file.size,
-        mimetype: req.file.mimetype
+      if (useBunny) {
+        const buffer = req.file.buffer; // available when using memoryStorage
+        const bunnyUrl = await uploadToBunny({ buffer, filename: req.file.filename, mimetype: req.file.mimetype });
+        if (bunnyUrl) finalUrl = bunnyUrl;
       }
-    });
+
+      res.json({
+        success: true,
+        message: 'Image uploaded successfully',
+        data: {
+          filename: req.file.filename,
+          url: finalUrl,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        }
+      });
+    })();
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -90,20 +140,27 @@ router.post('/video', protect, upload.single('video'), (req, res) => {
       });
     }
 
-    // In a real application, you would upload to cloud storage and possibly transcode
-    // For now, return the local file path
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Try uploading to Bunny if configured, otherwise return local file URL
+    (async () => {
+      let finalUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
 
-    res.json({
-      success: true,
-      message: 'Video uploaded successfully',
-      data: {
-        filename: req.file.filename,
-        url: fileUrl,
-        size: req.file.size,
-        mimetype: req.file.mimetype
+      if (useBunny) {
+        const buffer = req.file.buffer;
+        const bunnyUrl = await uploadToBunny({ buffer, filename: req.file.filename, mimetype: req.file.mimetype });
+        if (bunnyUrl) finalUrl = bunnyUrl;
       }
-    });
+
+      res.json({
+        success: true,
+        message: 'Video uploaded successfully',
+        data: {
+          filename: req.file.filename,
+          url: finalUrl,
+          size: req.file.size,
+          mimetype: req.file.mimetype
+        }
+      });
+    })();
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -118,23 +175,32 @@ router.post('/video', protect, upload.single('video'), (req, res) => {
 // @access  Private
 router.delete('/:filename', protect, (req, res) => {
   try {
-    const filePath = path.join(uploadDir, req.params.filename);
+    const filename = req.params.filename;
+    const filePath = path.join(uploadDir, filename);
 
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({
-        success: false,
-        message: 'File not found'
+    // If Bunny configured, try deleting from Bunny storage
+    (async () => {
+      const storageZone = process.env.BUNNY_STORAGE_ZONE;
+      const apiKey = process.env.BUNNY_API_KEY;
+      if (storageZone && apiKey) {
+        const url = `https://storage.bunnycdn.com/${storageZone}/${filename}`;
+        try {
+          await axios.delete(url, { headers: { AccessKey: apiKey } });
+        } catch (err) {
+          console.error('Error deleting from Bunny (continuing):', err?.message || err);
+        }
+      }
+
+      // Also remove local file if exists and not using Bunny-only mode
+      if (!useBunny && fs.existsSync(filePath)) {
+        try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
+      }
+
+      res.json({
+        success: true,
+        message: 'File deleted successfully'
       });
-    }
-
-    // Delete file
-    fs.unlinkSync(filePath);
-
-    res.json({
-      success: true,
-      message: 'File deleted successfully'
-    });
+    })();
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -144,7 +210,9 @@ router.delete('/:filename', protect, (req, res) => {
   }
 });
 
-// Serve uploaded files statically
-router.use('/files', express.static(uploadDir));
+// Serve uploaded files statically only when using local storage fallback
+if (!useBunny) {
+  router.use('/files', express.static(uploadDir));
+}
 
 module.exports = router;
